@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Civitai Dopamine Everywhere",
+  "version": "1.0.0",
+  "description": "Get Civitai buzz notifications on any website you're visiting",
+  "permissions": [
+    "storage",
+    "cookies",
+    "alarms",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://civitai.com/*",
+    "<all_urls>"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Civitai Dopamine Everywhere"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "css": ["popup.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}
