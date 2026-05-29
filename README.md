@@ -99,8 +99,7 @@ Response format:
 
 ### Permissions
 
-- `storage` - Save settings and last buzz balance
-- `cookies` - Check if logged into Civitai
+- `storage` - Save settings, API key, and last buzz balance
 - `alarms` - Schedule periodic buzz checks
 - `scripting` - Inject notification UI
 - `tabs` - Send messages to active tab
@@ -113,7 +112,7 @@ Want to customize? Easy penings:
 
 **Change check interval:** Edit line 5 in `background.js`:
 ```javascript
-const DEFAULT_CHECK_INTERVAL = 15; // seconds
+const DEFAULT_CHECK_INTERVAL = 30; // seconds (Chrome's alarm minimum is 30s)
 ```
 
 **Change notification colors:** Edit lines 10-22 in `content.js`:

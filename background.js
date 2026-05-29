@@ -2,7 +2,7 @@
 // This script runs in the background and periodically checks for new buzz notifications
 
 const CIVITAI_API_ENDPOINT = 'https://civitai.com/api/trpc/buzz.getBuzzAccount?input=%7B%22json%22%3A%7B%22authed%22%3Atrue%7D%7D';
-const DEFAULT_CHECK_INTERVAL = 15; // Default: 15 seconds
+const DEFAULT_CHECK_INTERVAL = 30; // Default: 30 seconds (Chrome's alarm minimum)
 
 // Initialize the extension when installed
 chrome.runtime.onInstalled.addListener(async () => {
@@ -189,19 +189,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 });
 
+// Chrome will not fire an alarm more often than every 30 seconds. A shorter
+// period is silently ignored, which is why sub-30s intervals never ran.
+const MIN_ALARM_SECONDS = 30;
+
 // Update the check alarm with a new interval
 async function updateCheckAlarm(intervalSeconds) {
   // Clear existing alarm
   await chrome.alarms.clear('checkBuzzNotifications');
 
-  // Create new alarm with updated interval
-  // Note: Chrome alarms have a minimum of 1 minute for packed extensions
-  // For development/unpacked extensions, we can go lower
+  // Clamp to Chrome's 30-second minimum so the alarm actually fires
+  const effectiveSeconds = Math.max(MIN_ALARM_SECONDS, intervalSeconds);
+  const periodInMinutes = effectiveSeconds / 60;
+
+  // Set both delay and period so the first automatic check happens promptly
+  // and then repeats on the interval.
   await chrome.alarms.create('checkBuzzNotifications', {
-    periodInMinutes: intervalSeconds / 60
+    delayInMinutes: periodInMinutes,
+    periodInMinutes: periodInMinutes
   });
 
-  console.log('Alarm updated: checking every', intervalSeconds, 'seconds');
+  if (intervalSeconds < MIN_ALARM_SECONDS) {
+    console.log('Requested interval', intervalSeconds, 's is below Chrome\'s 30s minimum; using 30s');
+  }
+  console.log('Alarm updated: checking every', effectiveSeconds, 'seconds');
 }
 
 // For testing purposes: manually trigger a notification

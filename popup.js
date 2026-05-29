@@ -109,15 +109,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Load settings from storage
   async function loadSettings() {
-    const { checkInterval } = await chrome.storage.local.get('checkInterval');
+    const MIN_INTERVAL = 30; // Chrome won't fire alarms faster than this
+    let { checkInterval } = await chrome.storage.local.get('checkInterval');
 
-    if (checkInterval) {
-      intervalSelect.value = checkInterval;
-    } else {
-      // Default to 15 seconds
-      intervalSelect.value = 15;
-      await chrome.storage.local.set({ checkInterval: 15 });
+    // Migrate any previously-saved sub-30s value (which never actually ran)
+    if (!checkInterval || checkInterval < MIN_INTERVAL) {
+      checkInterval = MIN_INTERVAL;
+      await chrome.storage.local.set({ checkInterval });
+      chrome.runtime.sendMessage({ type: 'UPDATE_INTERVAL', interval: checkInterval });
     }
+
+    intervalSelect.value = checkInterval;
   }
 
   // Load buzz balance from storage
