@@ -5,7 +5,6 @@
   "description": "Get Civitai buzz notifications on any website you're visiting",
   "permissions": [
     "storage",
-    "cookies",
     "alarms",
     "scripting",
     "tabs"

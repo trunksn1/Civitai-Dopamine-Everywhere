@@ -53,27 +53,29 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 // Main function to check for buzz notifications
 async function checkForBuzzNotifications() {
   try {
-    // Check if user is logged into Civitai by looking for session cookie
-    const cookies = await chrome.cookies.getAll({
-      domain: 'civitai.com'
-    });
+    // Authenticate with an API key (Bearer token).
+    // We can't rely on the session cookie: this fetch runs from the service
+    // worker's chrome-extension:// origin, which is cross-site to civitai.com,
+    // and Civitai's SameSite=Lax session cookie is NOT sent on cross-site
+    // fetches. The API key works from any context.
+    const { apiKey } = await chrome.storage.local.get('apiKey');
 
-    if (cookies.length === 0) {
-      console.log('Not logged into Civitai');
+    if (!apiKey) {
+      console.log('No Civitai API key set — open the extension popup to add one');
       return;
     }
 
     // Fetch buzz balance from Civitai API
     const response = await fetch(CIVITAI_API_ENDPOINT, {
-      credentials: 'include',
       headers: {
         'Accept': 'application/json',
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
       }
     });
 
     if (!response.ok) {
-      console.log('Failed to fetch buzz balance:', response.status);
+      console.log('Failed to fetch buzz balance:', response.status, '— check that your API key is valid');
       return;
     }
 
@@ -82,14 +84,27 @@ async function checkForBuzzNotifications() {
     // Extract buzz balances from API response
     // Response format: {"result":{"data":{"json":{"blue":12870,"green":0,"yellow":15063}}}}
     if (!data.result?.data?.json) {
-      console.log('Unexpected API response format');
+      console.log('Unexpected API response format', data);
       return;
     }
 
     const currentBalance = data.result.data.json;
 
     // Get the last known balance
-    const storage = await chrome.storage.local.get('lastBuzzBalance');
+    const storage = await chrome.storage.local.get(['lastBuzzBalance', 'balanceInitialized']);
+
+    // On the first successful fetch (or right after the key changes), record the
+    // balance as a silent baseline. Otherwise the whole balance would register as
+    // one giant "increase" and spam notifications.
+    if (!storage.balanceInitialized) {
+      await chrome.storage.local.set({
+        lastBuzzBalance: currentBalance,
+        balanceInitialized: true
+      });
+      console.log('Baseline buzz balance recorded:', currentBalance);
+      return;
+    }
+
     const lastBalance = storage.lastBuzzBalance || { blue: 0, green: 0, yellow: 0 };
 
     // Check if any buzz type increased

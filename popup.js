@@ -1,6 +1,8 @@
 // Civitai Dopamine Everywhere - Popup Script
 // This script handles the popup UI and settings
 
+const CIVITAI_API_ENDPOINT = 'https://civitai.com/api/trpc/buzz.getBuzzAccount?input=%7B%22json%22%3A%7B%22authed%22%3Atrue%7D%7D';
+
 document.addEventListener('DOMContentLoaded', async () => {
   // Get DOM elements
   const intervalSelect = document.getElementById('intervalSelect');
@@ -9,15 +11,39 @@ document.addEventListener('DOMContentLoaded', async () => {
   const statusDot = document.getElementById('statusDot');
   const statusText = document.getElementById('statusText');
   const buzzAmount = document.getElementById('buzzAmount');
+  const apiKeyInput = document.getElementById('apiKeyInput');
+  const saveKeyButton = document.getElementById('saveKeyButton');
 
   // Load current settings
   loadSettings();
+
+  // Load saved API key
+  loadApiKey();
 
   // Load current buzz balance
   loadBuzzBalance();
 
   // Check connection status
   checkStatus();
+
+  // Handle API key save
+  saveKeyButton.addEventListener('click', async () => {
+    const key = apiKeyInput.value.trim();
+
+    // Save the key and reset the baseline so the next check re-syncs silently
+    // (without dumping the whole balance as a fake increase).
+    await chrome.storage.local.set({ apiKey: key, balanceInitialized: false });
+
+    showToast(key ? 'API key saved!' : 'API key cleared');
+
+    // Trigger an immediate check and refresh the UI
+    chrome.runtime.sendMessage({ type: 'CHECK_NOW' }, () => {
+      setTimeout(() => {
+        loadBuzzBalance();
+        checkStatus();
+      }, 1000);
+    });
+  });
 
   // Handle interval change
   intervalSelect.addEventListener('change', async () => {
@@ -118,17 +144,38 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // Check if user is logged in to Civitai
+  // Load the saved API key into the input
+  async function loadApiKey() {
+    const { apiKey } = await chrome.storage.local.get('apiKey');
+    if (apiKey) {
+      apiKeyInput.value = apiKey;
+    }
+  }
+
+  // Check connection status by validating the API key against Civitai
   async function checkStatus() {
     try {
-      const cookies = await chrome.cookies.getAll({ domain: 'civitai.com' });
+      const { apiKey } = await chrome.storage.local.get('apiKey');
 
-      if (cookies.length > 0) {
+      if (!apiKey) {
+        statusDot.classList.add('inactive');
+        statusText.textContent = 'No API key set — add one below';
+        return;
+      }
+
+      const response = await fetch(CIVITAI_API_ENDPOINT, {
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        }
+      });
+
+      if (response.ok) {
         statusDot.classList.remove('inactive');
         statusText.textContent = 'Connected to Civitai';
       } else {
         statusDot.classList.add('inactive');
-        statusText.textContent = 'Not logged in to Civitai';
+        statusText.textContent = `Invalid API key (${response.status})`;
       }
     } catch (error) {
       statusDot.classList.add('inactive');

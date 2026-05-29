@@ -73,7 +73,18 @@
       cursor: pointer;
     }
 
-    select:focus, input[type="number"]:focus {
+    input[type="password"], input[type="text"] {
+      width: 100%;
+      padding: 6px 10px;
+      border: 1px solid #ced4da;
+      border-radius: 4px;
+      font-size: 13px;
+      background: white;
+      color: #212529;
+      margin-bottom: 8px;
+    }
+
+    select:focus, input:focus {
       outline: none;
       border-color: #339af0;
     }
@@ -231,6 +242,17 @@
         </div>
       </div>
     </div>
+
+    <div class="section">
+      <div class="section-title">Civitai API Key</div>
+      <input type="password" id="apiKeyInput" placeholder="Paste your Civitai API key">
+      <button class="button" id="saveKeyButton">Save API Key</button>
+      <div class="info-box" style="margin-top: 12px;">
+        Create a key at civitai.com → Account settings → API Keys. It's stored locally on your device only.
+      </div>
+    </div>
+
+    <div class="divider"></div>
 
     <div class="section">
       <div class="section-title">Settings</div>
