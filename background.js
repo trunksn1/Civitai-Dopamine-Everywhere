@@ -145,29 +145,54 @@ async function checkForBuzzNotifications() {
   }
 }
 
-// Send buzz notification to content script
+// Buzz type display names for the native-notification fallback
+const BUZZ_NAMES = { blue: 'Blue', green: 'Green', yellow: 'Yellow' };
+
+// Send buzz notification to the user. We prefer the in-page (content script)
+// notification because it matches Civitai's UI, but the content script isn't
+// reachable everywhere: chrome:// pages, the Web Store, the PDF viewer, and any
+// tab that was already open before the extension was installed/reloaded all
+// reject the message. In those cases we fall back to a native desktop
+// notification so the buzz is never silently lost.
 async function sendBuzzNotification(amount, buzzType = 'blue') {
   try {
-    // Get the currently active tab
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-
-    if (tabs.length === 0) {
-      console.log('No active tab found');
-      return;
-    }
-
     const activeTab = tabs[0];
 
-    // Send message to content script
-    chrome.tabs.sendMessage(activeTab.id, {
-      type: 'SHOW_BUZZ_NOTIFICATION',
-      amount: amount,
-      buzzType: buzzType
-    }).catch(error => {
-      console.log('Could not send message to content script:', error);
-    });
+    if (activeTab && activeTab.id != null) {
+      try {
+        await chrome.tabs.sendMessage(activeTab.id, {
+          type: 'SHOW_BUZZ_NOTIFICATION',
+          amount: amount,
+          buzzType: buzzType
+        });
+        return; // delivered in-page, done
+      } catch (error) {
+        console.log('Content script unreachable, falling back to desktop notification:', error?.message || error);
+      }
+    } else {
+      console.log('No active tab, falling back to desktop notification');
+    }
+
+    showDesktopNotification(amount, buzzType);
   } catch (error) {
     console.error('Error sending buzz notification:', error);
+  }
+}
+
+// Native desktop notification fallback
+function showDesktopNotification(amount, buzzType = 'blue') {
+  const name = BUZZ_NAMES[buzzType] || 'Blue';
+  try {
+    chrome.notifications.create({
+      type: 'basic',
+      iconUrl: chrome.runtime.getURL('icons/icon128.png'),
+      title: 'User Buzz Update',
+      message: `${amount} ${name} Buzz has been added to your Buzz account`,
+      priority: 1
+    });
+  } catch (error) {
+    console.error('Could not show desktop notification:', error);
   }
 }
 
