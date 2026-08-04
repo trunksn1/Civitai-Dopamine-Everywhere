@@ -1,7 +1,8 @@
 // Civitai Dopamine Everywhere - Popup Script
 // This script handles the popup UI and settings
-
-const CIVITAI_API_ENDPOINT = 'https://civitai.com/api/trpc/buzz.getBuzzAccount?input=%7B%22json%22%3A%7B%22authed%22%3Atrue%7D%7D';
+//
+// All credential handling lives in the service worker: the OAuth window steals
+// focus and closes this popup, which would abandon a flow started here.
 
 document.addEventListener('DOMContentLoaded', async () => {
   // Get DOM elements
@@ -13,6 +14,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   const buzzAmount = document.getElementById('buzzAmount');
   const apiKeyInput = document.getElementById('apiKeyInput');
   const saveKeyButton = document.getElementById('saveKeyButton');
+  const connectButton = document.getElementById('connectButton');
+  const disconnectButton = document.getElementById('disconnectButton');
+  const apiKeyDetails = document.getElementById('apiKeyDetails');
 
   // Load current settings
   loadSettings();
@@ -25,6 +29,36 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Check connection status
   checkStatus();
+
+  // Handle Civitai sign-in
+  connectButton.addEventListener('click', () => {
+    connectButton.textContent = 'Waiting for Civitai...';
+    connectButton.disabled = true;
+
+    chrome.runtime.sendMessage({ type: 'OAUTH_CONNECT' }, (response) => {
+      connectButton.disabled = false;
+
+      if (response?.success) {
+        showToast('Signed in with Civitai!');
+      } else {
+        showToast(response?.error || 'Sign-in failed');
+      }
+
+      loadBuzzBalance();
+      checkStatus();
+    });
+  });
+
+  // Handle Civitai sign-out
+  disconnectButton.addEventListener('click', () => {
+    disconnectButton.disabled = true;
+
+    chrome.runtime.sendMessage({ type: 'OAUTH_DISCONNECT' }, () => {
+      disconnectButton.disabled = false;
+      showToast('Signed out. Revoke access at civitai.com to remove it there too.');
+      checkStatus();
+    });
+  });
 
   // Handle API key save
   saveKeyButton.addEventListener('click', async () => {
@@ -154,35 +188,45 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
-  // Check connection status by validating the API key against Civitai
-  async function checkStatus() {
-    try {
-      const { apiKey } = await chrome.storage.local.get('apiKey');
-
-      if (!apiKey) {
+  // Ask the background script which credential is active and whether Civitai
+  // still accepts it, then reflect that in the status row and the buttons.
+  function checkStatus() {
+    chrome.runtime.sendMessage({ type: 'AUTH_STATUS' }, (status) => {
+      if (!status) {
         statusDot.classList.add('inactive');
-        statusText.textContent = 'No API key set — add one below';
+        statusText.textContent = 'Extension not responding';
         return;
       }
 
-      const response = await fetch(CIVITAI_API_ENDPOINT, {
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        }
-      });
+      const signedIn = status.mode === 'oauth';
 
-      if (response.ok) {
+      // Only offer sign-out when there is a session to sign out of, and stop
+      // pushing OAuth once it is already in use.
+      connectButton.style.display = signedIn ? 'none' : 'block';
+      disconnectButton.style.display = signedIn ? 'block' : 'none';
+      connectButton.textContent = 'Sign in with Civitai';
+
+      // Nudge the API-key fallback open only when it is the thing in use.
+      apiKeyDetails.open = status.mode === 'apikey';
+
+      if (status.connected) {
         statusDot.classList.remove('inactive');
-        statusText.textContent = 'Connected to Civitai';
-      } else {
-        statusDot.classList.add('inactive');
-        statusText.textContent = `Invalid API key (${response.status})`;
+        statusText.textContent = signedIn
+          ? 'Signed in with Civitai'
+          : 'Connected with API key';
+        return;
       }
-    } catch (error) {
+
       statusDot.classList.add('inactive');
-      statusText.textContent = 'Connection error';
-    }
+
+      if (status.mode === 'none') {
+        statusText.textContent = status.configured
+          ? 'Not connected — sign in below'
+          : 'No OAuth client ID in this build';
+      } else {
+        statusText.textContent = status.detail || 'Connection error';
+      }
+    });
   }
 
   // Simple toast notification

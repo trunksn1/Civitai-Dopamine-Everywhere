@@ -1,0 +1,8 @@
+# Signing key that pins the extension ID used in the OAuth redirect URI.
+# Losing it is survivable (re-register a redirect URI); leaking it lets someone
+# else publish an extension with this identity. Never commit it.
+extension-private-key.pem
+*.pem
+
+# Pasted screenshots
+Immagine degli Appunti*.jpg

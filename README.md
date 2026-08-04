@@ -2,7 +2,7 @@
 
 A Chrome extension that brings Civitai's satisfying buzz notifications to **every website you visit**. Get that dopamine hit wherever you browse!
 
-![Extension Demo](https://img.shields.io/badge/Version-1.0.0-blue) ![Chrome Extension](https://img.shields.io/badge/Chrome-Extension-green)
+![Extension Demo](https://img.shields.io/badge/Version-1.1.0-blue) ![Chrome Extension](https://img.shields.io/badge/Chrome-Extension-green)
 
 ## ✨ Features
 
@@ -37,9 +37,42 @@ The extension:
    - Click "Load unpacked"
    - Select the `Civitai-Dopamine-Everywhere` folder
 
-4. **You're done!**
-   - The extension will start checking your buzz balance
-   - Make sure you're logged into Civitai.com
+4. **Connect your account**
+   - Click the extension icon and press **Sign in with Civitai**
+   - Approve the single permission it asks for (Buzz → Read)
+   - The extension starts checking your balance immediately
+
+## 🔐 Authentication
+
+The extension signs in through **Civitai OAuth** (Authorization Code + PKCE S256).
+It requests exactly one scope — `BuzzRead` (bit value `65536`, "View buzz balance
+& history"). It cannot post, upload, react, or spend Buzz.
+
+This matters: a Civitai **API key grants full account access**, so a leaked key is
+an account compromise. A leaked `BuzzRead` token only reveals a balance.
+
+The client ID in `oauth.js` is a *public* identifier — Civitai rejects
+`client_secret` from public clients, so there is no secret in this repository.
+
+**API key fallback.** The popup keeps an "Use an API key instead" section for when
+OAuth is unavailable. OAuth takes precedence whenever a session exists.
+
+### Re-registering the OAuth app
+
+The redirect URI contains the extension ID, so `manifest.json` pins that ID with a
+`key` field. The matching private key is kept out of git (see `.gitignore`) — keep a
+backup, since replacing it changes the extension ID and invalidates the registration.
+
+| Setting | Value |
+| --- | --- |
+| App type | Browser / Mobile App (public) |
+| Redirect URI | `https://dejkfhkidangiagiggehaibdahhdnmdo.chromiumapp.org/` |
+| Allowed origins | *(blank)* |
+| Permissions | Buzz → Read only |
+
+⚠️ Publishing to the Chrome Web Store assigns a **store-controlled extension ID**
+that overrides this one. That changes the redirect URI, so the OAuth app has to be
+re-registered against the store ID before a store release.
 
 ## 🎮 Usage
 
@@ -67,6 +100,7 @@ Multiple buzz types stack vertically for that satisfying dopamine rush! 🎉
 ```
 Civitai-Dopamine-Everywhere/
 ├── manifest.json       # Extension configuration
+├── oauth.js            # Civitai OAuth (PKCE) - sign-in, tokens, refresh
 ├── background.js       # Background worker (checks buzz API)
 ├── content.js          # Content script (shows notifications)
 ├── popup.html          # Settings popup UI
@@ -99,11 +133,13 @@ Response format:
 
 ### Permissions
 
-- `storage` - Save settings, API key, and last buzz balance
+- `storage` - Save settings, credentials, and last buzz balance
 - `alarms` - Schedule periodic buzz checks
 - `scripting` - Inject notification UI
 - `tabs` - Send messages to active tab
+- `identity` - Run the Civitai OAuth sign-in flow
 - `https://civitai.com/*` - Access Civitai API
+- `https://auth.civitai.com/*` - OAuth authorize and token endpoints
 - `<all_urls>` - Show notifications on any site
 
 ## 🎨 Customization
@@ -134,9 +170,14 @@ setTimeout(() => {
 ## 🐛 Troubleshooting
 
 **Notifications not appearing?**
-- Make sure you're logged into Civitai.com
-- Click the extension icon to check connection status
+- Click the extension icon and check the status row says "Signed in with Civitai"
+- If it says the token was refused, sign out and sign in again
 - Try clicking "Check Buzz Now" in the popup
+
+**Sign-in window opens but nothing happens?**
+- The registered redirect URI must exactly match the extension ID shown in
+  `chrome://extensions/`, including the trailing slash
+- Check the service worker console (`chrome://extensions/` → "service worker")
 
 **Extension not loading?**
 - Make sure all files are in the same folder

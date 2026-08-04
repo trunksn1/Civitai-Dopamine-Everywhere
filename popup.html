@@ -244,13 +244,25 @@
     </div>
 
     <div class="section">
-      <div class="section-title">Civitai API Key</div>
-      <input type="password" id="apiKeyInput" placeholder="Paste your Civitai API key">
-      <button class="button" id="saveKeyButton">Save API Key</button>
-      <div class="info-box" style="margin-top: 12px;">
-        Create a key at civitai.com → Account settings → API Keys. It's stored locally on your device only.
+      <div class="section-title">Civitai Account</div>
+      <button class="button" id="connectButton">Sign in with Civitai</button>
+      <button class="button button-secondary" id="disconnectButton" style="display: none; margin-top: 8px;">Sign out</button>
+      <div class="info-box" style="margin-top: 12px;" id="authInfo">
+        Signing in asks Civitai for one permission only: <strong>read your Buzz balance</strong>. It can't post, upload, or spend anything.
       </div>
     </div>
+
+    <div class="divider"></div>
+
+    <details class="section" id="apiKeyDetails">
+      <summary class="section-title" style="cursor: pointer;">Use an API key instead</summary>
+      <input type="password" id="apiKeyInput" placeholder="Paste your Civitai API key" style="margin-top: 8px;">
+      <button class="button button-secondary" id="saveKeyButton">Save API Key</button>
+      <div class="info-box" style="margin-top: 12px;">
+        Fallback for when sign-in is unavailable. Create a key at civitai.com → Account settings → API Keys.
+        Note that an API key grants <strong>full account access</strong>, not just Buzz — signing in above is safer.
+      </div>
+    </details>
 
     <div class="divider"></div>
 
