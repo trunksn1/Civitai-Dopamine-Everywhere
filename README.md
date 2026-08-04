@@ -60,8 +60,12 @@ OAuth is unavailable. OAuth takes precedence whenever a session exists.
 ### Re-registering the OAuth app
 
 The redirect URI contains the extension ID, so `manifest.json` pins that ID with a
-`key` field. The matching private key is kept out of git (see `.gitignore`) — keep a
-backup, since replacing it changes the extension ID and invalidates the registration.
+`key` field — the public half of an RSA keypair.
+
+**Store the matching private key outside this folder**, in a backed-up location.
+Chrome warns if it finds a `.pem` in the extension directory, because everything here
+gets bundled into a packaged build. Keep the backup: replacing that key changes the
+extension ID, which invalidates the registered redirect URI.
 
 | Setting | Value |
 | --- | --- |
