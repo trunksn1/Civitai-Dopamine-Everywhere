@@ -9,14 +9,15 @@ A Chrome extension that brings Civitai's satisfying buzz notifications to **ever
 - 🔔 **Buzz Notifications Anywhere** - Get Civitai buzz notifications on any website (YouTube, Reddit, anywhere!)
 - 🎨 **Color-Coded Notifications** - Blue, Green, and Yellow buzz each get their own colored notification
 - 📚 **Satisfying Notification Stacking** - Multiple buzz rewards stack beautifully on your screen
-- ⚙️ **Adjustable Check Interval** - Choose how often to check (10 seconds to 5 minutes)
+- ⚙️ **Adjustable Check Interval** - Choose how often to check (30 seconds to 5 minutes)
 - 💰 **Live Buzz Balance** - See your total buzz and breakdown by type
 - 🧪 **Test Mode** - Preview how notifications look before you earn buzz
+- 🔐 **One-Click Sign-In** - Connect through Civitai OAuth with read-only access to your Buzz balance
 
 ## 🎯 How It Works
 
 The extension:
-1. Checks your Civitai buzz balance every 15 seconds (adjustable)
+1. Checks your Civitai buzz balance every 30 seconds (adjustable — 30s is Chrome's alarm minimum)
 2. When your buzz increases, it shows a notification on whatever site you're browsing
 3. Each buzz type (Blue/Green/Yellow) gets its own notification for maximum satisfaction!
 
@@ -84,7 +85,8 @@ re-registered against the store ID before a store release.
 
 Click the extension icon to:
 - 📊 View your current buzz balance (total + breakdown by type)
-- ⏱️ Adjust check interval (10s, 15s, 30s, 1min, 2min, 5min)
+- 🔐 Sign in with Civitai, or sign out
+- ⏱️ Adjust check interval (30s, 1min, 2min, 5min)
 - 🧪 Test notifications with the "Test Notification" button
 - 🔄 Manually check buzz with "Check Buzz Now"
 
@@ -120,6 +122,16 @@ Uses Civitai's tRPC API:
 https://civitai.com/api/trpc/buzz.getBuzzAccount
 ```
 
+Civitai's public REST API documents no Buzz balance endpoint, so this undocumented
+tRPC procedure is the only way to read one. It accepts an OAuth bearer token carrying
+the `BuzzRead` scope — verified against production, though undocumented and therefore
+subject to change without notice. That is why the API key fallback is kept.
+
+The request is authenticated with a `Authorization: Bearer` header rather than the
+session cookie: the fetch runs from the service worker's `chrome-extension://` origin,
+which is cross-site to civitai.com, and Civitai's `SameSite=Lax` session cookie is not
+sent on cross-site requests.
+
 Response format:
 ```json
 {
@@ -150,12 +162,13 @@ Response format:
 
 Want to customize? Easy penings:
 
-**Change check interval:** Edit line 5 in `background.js`:
+**Change check interval:** `DEFAULT_CHECK_INTERVAL` in `background.js`:
 ```javascript
 const DEFAULT_CHECK_INTERVAL = 30; // seconds (Chrome's alarm minimum is 30s)
 ```
+Values below 30 are clamped — Chrome silently ignores shorter alarm periods.
 
-**Change notification colors:** Edit lines 10-22 in `content.js`:
+**Change notification colors:** `BUZZ_COLORS` in `content.js`:
 ```javascript
 const BUZZ_COLORS = {
   blue: { color: '#339af0', name: 'Blue' },
@@ -164,7 +177,7 @@ const BUZZ_COLORS = {
 };
 ```
 
-**Change notification duration:** Edit line 73 in `content.js`:
+**Change notification duration:** the `closeNotification` timeout in `content.js`:
 ```javascript
 setTimeout(() => {
   closeNotification(notification);
@@ -207,7 +220,7 @@ MIT License - feel free to modify and share!
 ## 🙏 Credits
 
 - Built for the Civitai community
-- Uses Civitai's unofficial API
+- Uses Civitai's official OAuth service and its unofficial tRPC API
 - Inspired by Civitai's Mantine UI notifications
 
 ## ⚠️ Disclaimer
