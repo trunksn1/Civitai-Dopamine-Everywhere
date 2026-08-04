@@ -1,0 +1,9 @@
+# The signing key that pins the extension ID must be stored OUTSIDE this folder:
+# Chrome warns when it finds one here, because everything in the extension
+# directory ends up inside a packaged build. These patterns are a safety net for
+# a key accidentally dropped back in, not the primary defence.
+extension-private-key.pem
+*.pem
+
+# Pasted screenshots
+Immagine degli Appunti*.jpg

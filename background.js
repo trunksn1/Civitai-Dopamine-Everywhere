@@ -1,6 +1,14 @@
 // Civitai Dopamine Everywhere - Background Script
 // This script runs in the background and periodically checks for new buzz notifications
 
+import {
+  connect as oauthConnect,
+  disconnect as oauthDisconnect,
+  getAccessToken,
+  readSession,
+  isConfigured
+} from './oauth.js';
+
 const CIVITAI_API_ENDPOINT = 'https://civitai.com/api/trpc/buzz.getBuzzAccount?input=%7B%22json%22%3A%7B%22authed%22%3Atrue%7D%7D';
 const DEFAULT_CHECK_INTERVAL = 30; // Default: 30 seconds (Chrome's alarm minimum)
 
@@ -50,45 +58,74 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   }
 });
 
+// Resolve the credential to send, preferring OAuth over the API key fallback.
+//
+// Either way this is a Bearer token: we can't rely on the session cookie,
+// because this fetch runs from the service worker's chrome-extension:// origin,
+// which is cross-site to civitai.com, and Civitai's SameSite=Lax session cookie
+// is NOT sent on cross-site fetches. A Bearer token works from any context.
+async function resolveAuth() {
+  if (await readSession()) {
+    const token = await getAccessToken();
+    if (token) return { token, mode: 'oauth' };
+  }
+
+  const { apiKey } = await chrome.storage.local.get('apiKey');
+  if (apiKey) return { token: apiKey, mode: 'apikey' };
+
+  return null;
+}
+
+// Fetch the current balance with whichever credential is active.
+// Throws with a usable message so both the alarm and the popup can report it.
+async function fetchBuzzBalance() {
+  const auth = await resolveAuth();
+
+  if (!auth) {
+    const error = new Error('Not connected — open the popup and sign in with Civitai');
+    error.code = 'NO_AUTH';
+    throw error;
+  }
+
+  const response = await fetch(CIVITAI_API_ENDPOINT, {
+    headers: {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${auth.token}`
+    }
+  });
+
+  if (!response.ok) {
+    const error = new Error(auth.mode === 'oauth'
+      ? `Civitai refused the OAuth token (${response.status})`
+      : `Civitai refused the API key (${response.status})`);
+    error.code = 'HTTP_' + response.status;
+    error.mode = auth.mode;
+    throw error;
+  }
+
+  const data = await response.json();
+
+  // Response format: {"result":{"data":{"json":{"blue":12870,"green":0,"yellow":15063}}}}
+  if (!data.result?.data?.json) {
+    const error = new Error('Unexpected API response format');
+    error.code = 'BAD_SHAPE';
+    throw error;
+  }
+
+  return { balance: data.result.data.json, mode: auth.mode };
+}
+
 // Main function to check for buzz notifications
 async function checkForBuzzNotifications() {
   try {
-    // Authenticate with an API key (Bearer token).
-    // We can't rely on the session cookie: this fetch runs from the service
-    // worker's chrome-extension:// origin, which is cross-site to civitai.com,
-    // and Civitai's SameSite=Lax session cookie is NOT sent on cross-site
-    // fetches. The API key works from any context.
-    const { apiKey } = await chrome.storage.local.get('apiKey');
-
-    if (!apiKey) {
-      console.log('No Civitai API key set — open the extension popup to add one');
+    let currentBalance;
+    try {
+      ({ balance: currentBalance } = await fetchBuzzBalance());
+    } catch (error) {
+      console.log('Buzz check skipped:', error.message);
       return;
     }
-
-    // Fetch buzz balance from Civitai API
-    const response = await fetch(CIVITAI_API_ENDPOINT, {
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      }
-    });
-
-    if (!response.ok) {
-      console.log('Failed to fetch buzz balance:', response.status, '— check that your API key is valid');
-      return;
-    }
-
-    const data = await response.json();
-
-    // Extract buzz balances from API response
-    // Response format: {"result":{"data":{"json":{"blue":12870,"green":0,"yellow":15063}}}}
-    if (!data.result?.data?.json) {
-      console.log('Unexpected API response format', data);
-      return;
-    }
-
-    const currentBalance = data.result.data.json;
 
     // Get the last known balance
     const storage = await chrome.storage.local.get(['lastBuzzBalance', 'balanceInitialized']);
@@ -171,6 +208,35 @@ async function sendBuzzNotification(amount, buzzType = 'blue') {
   }
 }
 
+// Re-syncing the baseline keeps a credential change from registering the whole
+// balance as one giant "increase" and spamming notifications.
+async function resetBaseline() {
+  await chrome.storage.local.set({ balanceInitialized: false });
+}
+
+// Report which credential is active and whether Civitai actually accepts it.
+async function reportAuthStatus() {
+  const session = await readSession();
+  const { apiKey } = await chrome.storage.local.get('apiKey');
+  const mode = session ? 'oauth' : (apiKey ? 'apikey' : 'none');
+
+  if (mode === 'none') {
+    return { mode, connected: false, configured: await isConfigured() };
+  }
+
+  try {
+    await fetchBuzzBalance();
+    return { mode, connected: true, configured: await isConfigured() };
+  } catch (error) {
+    return {
+      mode,
+      connected: false,
+      configured: await isConfigured(),
+      detail: error.message
+    };
+  }
+}
+
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'UPDATE_INTERVAL') {
@@ -186,6 +252,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ success: true });
     });
     return true; // Keep the message channel open for async response
+  }
+
+  if (message.type === 'AUTH_STATUS') {
+    reportAuthStatus().then(sendResponse);
+    return true;
+  }
+
+  if (message.type === 'OAUTH_CONNECT') {
+    // The sign-in window steals focus, which closes the popup — so the flow
+    // has to run here in the service worker, not in the popup's page context.
+    oauthConnect()
+      .then(async () => {
+        await resetBaseline();
+        await checkForBuzzNotifications();
+        sendResponse({ success: true });
+      })
+      .catch((error) => sendResponse({ success: false, error: error.message }));
+    return true;
+  }
+
+  if (message.type === 'OAUTH_DISCONNECT') {
+    oauthDisconnect()
+      .then(async () => {
+        await resetBaseline();
+        sendResponse({ success: true });
+      })
+      .catch((error) => sendResponse({ success: false, error: error.message }));
+    return true;
   }
 });
 
